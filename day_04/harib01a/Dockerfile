@@ -6,6 +6,4 @@ RUN apk update && \
         nasm \
         mtools
 
-WORKDIR /haribos
-
 CMD ["/bin/ash"]

@@ -1,40 +1,39 @@
-default :
-	make img
+OSNAME := haribote
+OSBUILDER := ${OSNAME}-builder
 
-ipl10.bin : ipl10.nas Makefile
-	nasm ipl10.nas -o ipl10.bin -l ipl10.lst
+%.bin : %.nas
+	nasm $^ -o $@ -l $*.lst
 
-asmhead.bin : asmhead.nas Makefile
-	nasm asmhead.nas -o asmhead.bin -l asmhead.lst
+%.o : %.nas
+	nasm -g -f elf $^ -o $@ -l $*.lst
 
-naskfunc.o : naskfunc.nas Makefile
-	nasm -g -f elf naskfunc.nas -o naskfunc.o -l naskfunc.lst
+BOOTPACK_FILES := bootpack.c naskfunc.o
+bootpack.hrb : ${BOOTPACK_FILES} hrb.ld Makefile
+	gcc -fno-pie -no-pie -march=i486 -m32 -nostdlib -T hrb.ld -o $@ -g -O0 ${BOOTPACK_FILES}
 
-bootpack.hrb : bootpack.c naskfunc.o hrb.ld Makefile
-	gcc -fno-pie -no-pie -march=i486 -m32 -nostdlib -T hrb.ld -o bootpack.hrb -g -O0 bootpack.c naskfunc.o
+${OSNAME}.sys : asmhead.bin bootpack.hrb
+	cat $^ > $@
 
-haribote.sys : asmhead.bin bootpack.hrb Makefile
-	cat asmhead.bin bootpack.hrb > haribote.sys
-
-haribote.img : ipl10.bin haribote.sys asmhead.bin Makefile
-	mformat -f 1440 -C -B ipl10.bin -i haribote.img ::
-	mcopy -i haribote.img haribote.sys ::
+${OSNAME}.img : ipl10.bin ${OSNAME}.sys
+	mformat -f 1440 -C -B ipl10.bin -i $@ ::
+	mcopy -i $@ ${OSNAME}.sys ::
 
 img :
-	make -r haribote.img
+	make ${OSNAME}.img
 
 .PHONY: docker-build
 docker-build:
-	docker build -t haribos .
+	docker build -t ${OSBUILDER} .
 
 .PHONY: docker-make
 docker-make:
-	docker run -it --rm -v $(CURDIR):/haribos haribos make img
+	docker run -it --rm -v $(CURDIR):/${OSNAME} -w /${OSNAME} ${OSBUILDER} make img
 
 .PHONY: run
 run :
+	make docker-build
 	make docker-make
-	qemu-system-i386 -L . -m 32 -rtc base=localtime -vga std -drive file=haribote.img,index=0,if=floppy,format=raw
+	qemu-system-i386 -L . -m 32 -rtc base=localtime -vga std -drive file=${OSNAME}.img,index=0,if=floppy,format=raw
 
 clean :
 	rm -f *.bin *.lst *.sys *.img *.o *.hrb
